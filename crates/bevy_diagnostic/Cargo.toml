@@ -22,4 +22,4 @@ bevy_log = { path = "../bevy_log", version = "0.5.0" }
 bevy_utils = { path = "../bevy_utils", version = "0.5.0" }
 
 # other
-parking_lot = "0.11.0"
+parking_lot = "0.12.1"
