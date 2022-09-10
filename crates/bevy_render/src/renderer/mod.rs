@@ -96,11 +96,14 @@ pub async fn initialize_renderer(
     instance: &Instance,
     options: &WgpuSettings,
     request_adapter_options: &RequestAdapterOptions<'_>,
-) -> (RenderDevice, RenderQueue, AdapterInfo) {
-    let adapter = instance
-        .request_adapter(request_adapter_options)
-        .await
-        .expect("Unable to find a GPU! Make sure you have installed required drivers!");
+) -> Option<(RenderDevice, RenderQueue, AdapterInfo)> {
+    let adapter = {
+        let adapter = instance.request_adapter(request_adapter_options).await;
+        if adapter.is_none() {
+            error!("Unable to find a GPU! Make sure you have installed required drivers! Rendering will not work, and some plugins may misbehave.");
+        }
+        adapter
+    }?;
 
     let adapter_info = adapter.get_info();
     info!("{:?}", adapter_info);
@@ -245,7 +248,7 @@ pub async fn initialize_renderer(
         .unwrap();
     let device = Arc::new(device);
     let queue = Arc::new(queue);
-    (RenderDevice::from(device), queue, adapter_info)
+    Some((RenderDevice::from(device), queue, adapter_info))
 }
 
 /// The context with all information required to interact with the GPU.
