@@ -122,59 +122,66 @@ impl Plugin for LogPlugin {
             let settings = app.world.get_resource_or_insert_with(LogSettings::default);
             format!("{},{}", settings.level, settings.filter)
         };
-        LogTracer::init().unwrap();
-        let filter_layer = EnvFilter::try_from_default_env()
-            .or_else(|_| EnvFilter::try_new(&default_filter))
-            .unwrap();
-        let subscriber = Registry::default().with(filter_layer);
+        if let Ok(_) = LogTracer::init() {
+            let filter_layer = EnvFilter::try_from_default_env()
+                .or_else(|_| EnvFilter::try_new(&default_filter))
+                .unwrap();
+            let subscriber = Registry::default().with(filter_layer);
 
-        #[cfg(feature = "trace")]
-        let subscriber = subscriber.with(tracing_error::ErrorLayer::default());
+            #[cfg(feature = "trace")]
+            let subscriber = subscriber.with(tracing_error::ErrorLayer::default());
 
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        {
-            #[cfg(feature = "tracing-chrome")]
-            let chrome_layer = {
-                let mut layer = tracing_chrome::ChromeLayerBuilder::new();
-                if let Ok(path) = std::env::var("TRACE_CHROME") {
-                    layer = layer.file(path);
-                }
-                let (chrome_layer, guard) = layer
-                    .name_fn(Box::new(|event_or_span| match event_or_span {
-                        tracing_chrome::EventOrSpan::Event(event) => event.metadata().name().into(),
-                        tracing_chrome::EventOrSpan::Span(span) => {
-                            if let Some(fields) =
-                                span.extensions().get::<FormattedFields<DefaultFields>>()
-                            {
-                                format!("{}: {}", span.metadata().name(), fields.fields.as_str())
-                            } else {
-                                span.metadata().name().into()
+            #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+            {
+                #[cfg(feature = "tracing-chrome")]
+                let chrome_layer = {
+                    let mut layer = tracing_chrome::ChromeLayerBuilder::new();
+                    if let Ok(path) = std::env::var("TRACE_CHROME") {
+                        layer = layer.file(path);
+                    }
+                    let (chrome_layer, guard) = layer
+                        .name_fn(Box::new(|event_or_span| match event_or_span {
+                            tracing_chrome::EventOrSpan::Event(event) => {
+                                event.metadata().name().into()
                             }
-                        }
-                    }))
-                    .build();
-                app.world.insert_non_send_resource(guard);
-                chrome_layer
-            };
+                            tracing_chrome::EventOrSpan::Span(span) => {
+                                if let Some(fields) =
+                                    span.extensions().get::<FormattedFields<DefaultFields>>()
+                                {
+                                    format!(
+                                        "{}: {}",
+                                        span.metadata().name(),
+                                        fields.fields.as_str()
+                                    )
+                                } else {
+                                    span.metadata().name().into()
+                                }
+                            }
+                        }))
+                        .build();
+                    app.world.insert_non_send_resource(guard);
+                    chrome_layer
+                };
 
-            #[cfg(feature = "tracing-tracy")]
-            let tracy_layer = tracing_tracy::TracyLayer::new();
+                #[cfg(feature = "tracing-tracy")]
+                let tracy_layer = tracing_tracy::TracyLayer::new();
 
-            let fmt_layer = tracing_subscriber::fmt::Layer::default();
-            #[cfg(feature = "tracing-tracy")]
-            let fmt_layer = fmt_layer.with_filter(
-                tracing_subscriber::filter::Targets::new().with_target("tracy", Level::ERROR),
-            );
+                let fmt_layer = tracing_subscriber::fmt::Layer::default();
+                #[cfg(feature = "tracing-tracy")]
+                let fmt_layer = fmt_layer.with_filter(
+                    tracing_subscriber::filter::Targets::new().with_target("tracy", Level::ERROR),
+                );
 
-            let subscriber = subscriber.with(fmt_layer);
+                let subscriber = subscriber.with(fmt_layer);
 
-            #[cfg(feature = "tracing-chrome")]
-            let subscriber = subscriber.with(chrome_layer);
-            #[cfg(feature = "tracing-tracy")]
-            let subscriber = subscriber.with(tracy_layer);
+                #[cfg(feature = "tracing-chrome")]
+                let subscriber = subscriber.with(chrome_layer);
+                #[cfg(feature = "tracing-tracy")]
+                let subscriber = subscriber.with(tracy_layer);
 
-            bevy_utils::tracing::subscriber::set_global_default(subscriber)
+                bevy_utils::tracing::subscriber::set_global_default(subscriber)
                 .expect("Could not set global default tracing subscriber. If you've already set up a tracing subscriber, please disable LogPlugin from Bevy's DefaultPlugins");
+            }
         }
 
         #[cfg(target_arch = "wasm32")]
